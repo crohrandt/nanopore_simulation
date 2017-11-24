@@ -1,0 +1,2 @@
+class SIException(Exception):
+    pass
