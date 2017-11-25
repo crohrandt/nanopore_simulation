@@ -54,7 +54,7 @@ class SimSignalGenerator(object):
         # Base dictionary for choosing error bases
         self.base = ['A', 'C', 'G', 'T']
         for key in self.ref_data:
-            if filter == "human" and len(self.ref_data[key].seq) > 450000:
+            if filter == "human" and len(self.ref_data[key].seq) > 45000000:
                 self.ref_data_keys.append(key)
             else:
                 self.ref_data_keys.append(key)
