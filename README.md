@@ -25,7 +25,7 @@ sudo yum install python3-tkinter
 After that, install the Nanopore SimulatION package:
 
 ```bash
-git clone https://git.rohreich.de/scm/dna/nanopore_simulation.git
+git clone https://github.com/crohrandt/nanopore_simulation
 cd nanopore_simulation
 pip3 install -e ./
 ```
@@ -43,11 +43,6 @@ All dependencies should be automatically installed by pip.
 - h5py
 - matplotlib (for future use, yet only pylab is used)
 
-###### Examples
-
-- ONT albacore 2.1.1
-- minimap2 2.11-r311
-
 ### Usage
 
 #### Examples
@@ -60,10 +55,7 @@ source download site.
 For the complete verification, a pipeline is described using the ONT albacore basecaller in version 2.1.1 and a mapping 
 of the simulated reads to the reference genome using minimap2 in version 2.1-r311. 
 
-
 #### DNA-Example
-
-
 
 ###### Simulate human DNA reads
 ```
@@ -86,3 +78,8 @@ read_fast5_basecaller.py -i . -o fast5,fastq -s basecalled -f FLO-MIN106 -k SQK-
 ```
 minimap2 -ax map-ont ../../Homo_sapiens.GRCh38.dna.primary_assembly.fa basecalled/workspace/pass/*.fastq > Run-Output.sam
 ```
+
+###### Tested with
+
+- ONT albacore 2.1.1
+- minimap2 2.11-r311
