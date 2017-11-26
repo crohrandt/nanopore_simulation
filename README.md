@@ -8,7 +8,7 @@
 
 ### Description
 
-Nanopore SimulatION is a tool for simulating an Oxfornd Nanopore Technologies MinION device for bioinformatic development. 
+Nanopore SimulatION is a tool for simulating an Oxford Nanopore Technologies MinION device for bioinformatic development. 
 
 ### Installation
 
