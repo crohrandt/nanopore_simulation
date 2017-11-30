@@ -1,7 +1,7 @@
 from setuptools import setup
 
 setup(name='simulatION',
-      version='0.3',
+      version='0.4.0',
       description='Simulates Oxford Nanopore Technologies MinION reads',
       url='https://git.rohreich.de/projects/DNA/repos/nanopore_simulation/',
       author='FH Kiel',

@@ -5,6 +5,13 @@ from Bio import Seq
 import numpy as np
 from pylab import *
 import scipy.signal
+from datetime import date
+import time
+import h5py
+import os
+import subprocess
+from io import BytesIO
+
 
 class SimSignalGenerator(object):
 
@@ -54,7 +61,7 @@ class SimSignalGenerator(object):
         # Base dictionary for choosing error bases
         self.base = ['A', 'C', 'G', 'T']
         for key in self.ref_data:
-            if filter == "human" and len(self.ref_data[key].seq) > 450000:
+            if filter == "human" and len(self.ref_data[key].seq) > 4500000:
                 self.ref_data_keys.append(key)
             else:
                 self.ref_data_keys.append(key)
@@ -87,6 +94,7 @@ class SimSignalGenerator(object):
             probabilities.append(eld[1])
         self.event_length_distribution.append(lengths)
         self.event_length_distribution.append(probabilities)
+
         lengths = []
         probabilities = []
         for offset in self.signal_config.offsets:
@@ -109,9 +117,15 @@ class SimSignalGenerator(object):
         self.file_path = self.signal_config.file_path
 
 
-    def generate(self, snip_count, generate_events=True, ticks=None, precise=False, debug=False, sampling_rate = 4000.0, cut_off_freq = 1750.0, bandwidth_freq = 40.0):
+    def generate(self, snip_count, generate_events=True, ticks=None, precise=False, debug=False, scrappie=False, length_distribution=None, offset = 3, sampling_rate = 4000.0, cut_off_freq = 1750.0, bandwidth_freq = 40.0):
+
+        if length_distribution:
+            read_length_distribution = length_distribution
+        else:
+            read_length_distribution = self.read_length_distribution
+
         # Generate random snippets
-        distributed_length = np.random.choice(self.read_length_distribution[0], snip_count, p=self.read_length_distribution[1])
+        distributed_length = np.random.choice(read_length_distribution[0], snip_count, p=read_length_distribution[1])
         length_offsets = np.random.randint(0, 1000, snip_count)
         snippet_length = np.maximum(distributed_length - length_offsets, np.full(snip_count, 20))
         snippet_length.sort()
@@ -120,7 +134,7 @@ class SimSignalGenerator(object):
         references_indices = np.argsort(references_lengths)
         references_lengths_sorted = references_lengths[references_indices]
         snippet_starts = np.array([np.random.randint(0, max(1,ref)) for ref in references_lengths_sorted - snippet_length])
-        snippets = np.array([self.ref_data[references_keys[references_indices[i]]].seq[snippet_starts[i]:min(references_lengths_sorted[i], snippet_starts[i] + snippet_length[i])] for i in range(len(references_keys))])
+        snippets = [self.ref_data[references_keys[references_indices[i]]].seq[snippet_starts[i]:min(references_lengths_sorted[i], snippet_starts[i] + snippet_length[i])] for i in range(len(references_keys))]
 
         reads = []
 
@@ -213,6 +227,10 @@ class SimSignalGenerator(object):
 
             sequence = "".join(new_record)
 
+            if scrappie:
+                proc = subprocess.run(["scrappie squiggle <(echo -e \">\\n" + sequence + "\")"], stdout=subprocess.PIPE, executable='/bin/bash', shell=True)
+                scrappie_output_array = np.genfromtxt(BytesIO(proc.stdout),dtype="i4,S1,f4,f4,f4")
+
             if self.debug: print(sequence)
             if self.debug: print("Amount mismatch: %s, insertion: %s, deletion: %s" % (mis_error, ins_error, del_error))
             if self.debug: print("Generated sequence with %s errors " % (error_count))
@@ -225,32 +243,30 @@ class SimSignalGenerator(object):
             try:
                 kmer_means, kmer_stdvs = zip(*[self.model_dict[kmer] for kmer in kmers])
             except ValueError:
-                print("Reference too short to simulate. Continueing!")
+                print("Reference too short to simulate. Continuing!")
                 continue
             kmer_means = np.array(kmer_means)
             kmer_stdvs = np.array(kmer_stdvs)
 
-            if debug:
-                event_move = np.full(len(kmer_means),1)
+            if not scrappie:
+                event_std = np.random.uniform(-1 * kmer_stdvs, kmer_stdvs)
+                if not precise:
+                    event_mean = kmer_means + event_std
+                else:
+                    event_mean = kmer_means
+                if not ticks:
+                    event_samples = np.random.choice(self.event_length_distribution[0], len(event_mean), p=self.event_length_distribution[1]).astype(int)
+                else:
+                    event_samples = np.full(len(event_mean),ticks)
+                event_list = np.stack([event_mean, np.abs(event_std), event_samples, np.array(kmers)], axis=1)
             else:
-                event_move = np.ceil(np.random.exponential(scale=2, size=len(kmer_means))).astype('int')
-            event_total = np.sum(event_move)
-            move_column = np.zeros(event_total, dtype='int')
-            if not debug:
-                move_column[np.cumsum(event_move[:-2])] = 1
-
-            event_idx = np.repeat(np.arange(len(kmer_means)), event_move)
-            event_std = np.random.uniform(-1 * kmer_stdvs[event_idx], kmer_stdvs[event_idx])
-            if not precise:
-                event_mean = kmer_means[event_idx] + event_std
-            else:
-                event_mean = kmer_means[event_idx]
-
-            if not ticks:
-                event_samples = np.random.choice(self.event_length_distribution[0], event_total, p=self.event_length_distribution[1]).astype(int)
-            else:
-                event_samples = np.full(event_total,ticks)
-            event_list = np.stack([event_mean, np.abs(event_std), event_samples, np.array(kmers)[event_idx], move_column], axis=1)
+                event_std = np.random.uniform(-1 * kmer_stdvs, kmer_stdvs)
+                if not precise:
+                    event_mean = kmer_means + event_std
+                else:
+                    event_mean = kmer_means
+                event_samples = np.array([int(np.round(np.random.geometric(1/length,1)))+offset for length in scrappie_output_array['f4'][:-(self.k - 1)]])
+                event_list = np.stack([event_mean, np.abs(event_std), event_samples, np.array(kmers)], axis=1)
 
             # Generate reads (Raw data)
             MW = []
@@ -271,3 +287,108 @@ class SimSignalGenerator(object):
                 reads.append([sequence, np.array(signal).astype(int), float(signal_offset), float(signal_range), int(snippet_starts[i]), int(snippet_length[i])])
 
         return reads
+
+
+    def generate_fast5_worker(self, config_file, simulation_queue, counter, config, read_length):
+        while not simulation_queue.empty():
+            file = simulation_queue.get()
+            path = file[0]
+            read_number = int(file[1])
+            start_time = file[2]
+
+            if 'sampling_rate' in config:
+                sampling_rate = config['MinION Configuration']['sample_rate']
+            else:
+                sampling_rate = config_file.sampling_rate
+
+            read = self.generate(1, sampling_rate=sampling_rate, scrappie=config['Simulation Parameters'].getboolean('use_scrappie'), cut_off_freq=float(config['Low Pass Filter'].get('cut_off_frequency','1750.0')), bandwidth_freq=float(config['Low Pass Filter'].get('bandwidth_frequency','40.0')), length_distribution=read_length, offset=int(config['Simulation Parameters'].get('scrappie_length_offset', 3)))[0]
+            while type(read).__name__ != 'list':
+                read = self.generate(1, sampling_rate=sampling_rate, scrappie=config['Simulation Parameters'].getboolean('use_scrappie'), cut_off_freq=float(config['Low Pass Filter'].get('cut_off_frequency', '1750.0')), bandwidth_freq=float(config['Low Pass Filter'].get('bandwidth_frequency', '40.0')), length_distribution=read_length, offset=int(config['Simulation Parameters'].get('scrappie_length_offset', 3)))[0]
+
+            values_offset = read[2]
+            values_range = read[3]
+            signal = read[1]
+            channel_number = file[3]
+            hostname = "Simulator"
+            date_string = date.today().strftime("%Y%m%d")
+            flowcell = "FL_Sim"
+            purpose = "sim"
+            device = "Nanopore_SimulatION"
+            sample_id = config_file.sample_id + "_simulated"
+
+            if not os.path.exists(path):
+                os.makedirs(path)
+
+            filename = hostname + "_" + date_string + "_" + flowcell + "_" + device + "_" + purpose + "_" + sample_id + "_75432" + "_ch" + str(
+                channel_number) + "_read" + str(read_number) + "_strand.fast5"
+
+            f = h5py.File(os.path.join(path, filename), 'w')
+            f.attrs.create("file_version", data=0.6, dtype="float64")
+
+            grp = f.create_group("UniqueGlobalKey/channel_id")
+            grp.attrs.create("channel_number", data=channel_number, dtype="S3")
+            grp.attrs.create("digitisation", data=config_file.digitisation, dtype="float64")
+            grp.attrs.create("offset", data=values_offset, dtype="float64")
+            grp.attrs.create("range", data=values_range, dtype="float64")
+            grp.attrs.create("sampling_rate", data=config_file.sampling_rate, dtype="float64")
+
+            grp = f.create_group("UniqueGlobalKey/context_args")
+            grp.attrs.create("experiment_kit", data=np.string_(config_file.experiment_kit))
+            grp.attrs.create("filename", data=np.string_(filename))
+            grp.attrs.create("sample_frequency", data=np.string_(str(config_file.sampling_rate)))
+            grp.attrs.create("user_filename_input", data=np.string_(sample_id))
+
+            grp = f.create_group("UniqueGlobalKey/tracking_id")
+            grp.attrs.create("asic_id", data=np.string_(config_file.asic_id))
+            grp.attrs.create("asic_id_eeprom", data=np.string_(config_file.asic_id_eeprom))
+            grp.attrs.create("asic_temp", data=np.string_(str(
+                np.random.choice(config_file.get_distribution_keys(config_file.asic_temp), 1,
+                                 p=config_file.get_distribution_probabilities(config_file.asic_temp))[0])))
+            grp.attrs.create("auto_update", data=np.string_(config_file.auto_update))
+            grp.attrs.create("auto_update_source", data=np.string_(config_file.auto_update_source))
+            if config_file.bream_core_version != 'None':
+                grp.attrs.create("bream_core_version", data=np.string_(config_file.bream_core_version))
+            if config_file.bream_is_standard != 'None':
+                grp.attrs.create("bream_is_standard", data=np.string_(config_file.bream_is_standard))
+            if config_file.bream_nc_version != 'None':
+                grp.attrs.create("bream_nc_version", data=np.string_(config_file.bream_nc_version))
+            if config_file.bream_ont_version != 'None':
+                grp.attrs.create("bream_ont_version", data=np.string_(config_file.bream_ont_version))
+            if config_file.bream_prod_version != 'None':
+                grp.attrs.create("bream_prod_version", data=np.string_(config_file.bream_prod_version))
+            if config_file.bream_rnd_version != 'None':
+                grp.attrs.create("bream_rnd_version", data=np.string_(config_file.bream_rnd_version))
+            grp.attrs.create("device_id", data=np.string_(device))
+            grp.attrs.create("exp_script_name", data=np.string_(config_file.exp_script_name))
+            grp.attrs.create("exp_script_purpose", data=np.string_(purpose))
+            grp.attrs.create("exp_start_time", data=np.string_(str(start_time)))
+            grp.attrs.create("flow_cell_id", data=np.string_(flowcell))
+            grp.attrs.create("heatsink_temp", data=np.string_(str(
+                np.random.choice(config_file.get_distribution_keys(config_file.heatsink_temp), 1,
+                                 p=config_file.get_distribution_probabilities(config_file.heatsink_temp))[
+                    0])))
+            grp.attrs.create("hostname", data=np.string_(hostname))
+            grp.attrs.create("installation_type", data=np.string_(config_file.installation_type))
+            grp.attrs.create("local_firmware_file", data=np.string_(config_file.local_firmware_file))
+            grp.attrs.create("operating_system", data=np.string_(config_file.operating_system))
+            grp.attrs.create("protocol_run_id", data=np.string_(config_file.protocol_run_id))
+            grp.attrs.create("protocols_version", data=np.string_(config_file.protocols_version))
+            grp.attrs.create("run_id", data=np.string_(config_file.run_id))
+            grp.attrs.create("sample_id", data=np.string_(sample_id))
+            grp.attrs.create("usb_config", data=np.string_(config_file.usb_config))
+            grp.attrs.create("version", data=np.string_(config_file.version_number))
+
+            grp = f.create_group("Raw/Reads/Read_" + str(read_number))
+            grp.attrs.create("duration", data=len(signal), dtype="int32")
+            grp.attrs.create("median_before", data=250, dtype="float64")
+            grp.attrs.create("read_id", data=np.string_("16acf7fb-696b-4b96-b95b-0a43f" + format(read_number, '07d')))
+            grp.attrs.create("read_number", data=read_number, dtype="int32")
+            grp.attrs.create("start_mux", data=1, dtype="int32")
+            grp.attrs.create("start_time", data=int(time.time()), dtype="int64")
+
+            grp.create_dataset("Signal", data=signal.astype("int16"), dtype="int16", compression="gzip",
+                               compression_opts=1, maxshape=(None,))
+
+            f.close()
+            with counter.get_lock():
+                counter.value += 1

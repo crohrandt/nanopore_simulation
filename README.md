@@ -2,13 +2,21 @@
 
 | Inputs | Outputs |
 |---|---|
-| Configuration-File (derived form a real conducted experiment)| 
-| Reference genome FASTA-File (may be from another species)| Basecallable Fast5-Files with raw values |
+| Configuration-File (derived form a real conducted experiment)| Basecallable Fast5-Files with raw values |
+| INI file for easy configuration value changes |
+| Reference genome FASTA-File (may be from another species)| 
 | Model-File (provided by ONT)| |
 
 ### Description
 
-Nanopore SimulatION is a tool for simulating an Oxfornd Nanopore Technologies MinION device for bioinformatic development. 
+Nanopore SimulatION is a tool for simulating an Oxford Nanopore Technologies MinION device for bioinformatic development.
+
+####Changes
+
+#####v 0.4.0
+- ONT scrappie integration
+- mutlithreading support
+- ini file for easy configuration value change
 
 ### Installation
 
@@ -25,14 +33,21 @@ sudo yum install python3-tkinter
 After that, install the Nanopore SimulatION package:
 
 ```bash
-git clone https://git.rohreich.de/scm/dna/nanopore_simulation.git
+git clone https://github.com/crohrandt/nanopore_simulation
 cd nanopore_simulation
 pip3 install -e ./
 ```
 
 ##### Dependencies
 
-All dependencies should be automatically installed by pip.
+For use of ONT scrappie output you need to install it from https://github.com/nanoporetech/scrappie following the instructions there. After that copy/link the executable to a directory the is in the environment path.
+
+For example:
+```
+sudo cp /path/to/scrappie/build/scrappie /usr/local/bin
+```
+
+All python dependencies should be automatically installed by pip.
 
 ###### Installation
 - numpy
@@ -42,11 +57,6 @@ All dependencies should be automatically installed by pip.
 - pandas
 - h5py
 - matplotlib (for future use, yet only pylab is used)
-
-###### Examples
-
-- ONT albacore 2.1.1
-- minimap2 2.11-r311
 
 ### Usage
 
@@ -60,10 +70,7 @@ source download site.
 For the complete verification, a pipeline is described using the ONT albacore basecaller in version 2.1.1 and a mapping 
 of the simulated reads to the reference genome using minimap2 in version 2.1-r311. 
 
-
 #### DNA-Example
-
-
 
 ###### Simulate human DNA reads
 ```
@@ -78,7 +85,7 @@ or
 ###### Basecall simulated Fast5s with albacore 2.1.1
 ```
 cd Run-Output
-read_fast5_basecaller.py -i . -o fast5,fastq -s basecalled -f FLO-MIN106 -k SQK-LSK108 -t 4 -r
+read_fast5_basecaller.py -i . -o fast5,fastq -q 0 -s basecalled -f FLO-MIN106 -k SQK-LSK108 -t 4 -r
 ```
 
 ###### Map basecalled reads with minimap 2.1
@@ -86,3 +93,9 @@ read_fast5_basecaller.py -i . -o fast5,fastq -s basecalled -f FLO-MIN106 -k SQK-
 ```
 minimap2 -ax map-ont ../../Homo_sapiens.GRCh38.dna.primary_assembly.fa basecalled/workspace/pass/*.fastq > Run-Output.sam
 ```
+
+###### Tested with
+
+- ONT albacore 2.1.1
+- minimap2 2.11-r311
+- ONT scrappie 1.2.0-58868d6

@@ -8,4 +8,4 @@ if [ -d Run-Output ]; then
     rm -r Run-Output
 fi
 
-simulatION simulate -r ../Homo_sapiens.GRCh38.dna.primary_assembly.fa -c gDNAWA01.sic -m template_median68pA.model -n 10000 -o Run-Output --filter human
+simulatION simulate -r ../Homo_sapiens.GRCh38.dna.primary_assembly.fa -c gDNAWA01.sic -m template_median68pA.model -n 10000 -o Run-Output -t 4
